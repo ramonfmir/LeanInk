@@ -70,6 +70,11 @@ structure StatementFeatures where
   bigramCounts : Multiset Bigram := ∅
   trigramCounts : Multiset Trigram := ∅
 
+instance : Inhabited StatementFeatures := ⟨{}⟩
+
+def StatementFeatures.isEmpty (sf : StatementFeatures) : Bool :=
+  sf.nameCounts.isEmpty && sf.bigramCounts.isEmpty && sf.trigramCounts.isEmpty
+
 instance : ForIn M (Multiset α) (α × Nat) :=
   show ForIn _ (Std.RBMap _ _ _) _ by infer_instance
 
