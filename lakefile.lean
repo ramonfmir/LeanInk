@@ -7,6 +7,9 @@ package leanInk
 
 lean_lib LeanInk
 
+require mathlib from git
+  "https://github.com/leanprover-community/mathlib4" @ "fb165b6"
+
 @[default_target]
 lean_exe leanInk {
   root := `Main
