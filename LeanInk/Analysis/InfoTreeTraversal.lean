@@ -12,6 +12,8 @@ import Lean.Data.Lsp
 import Lean.Syntax
 import Lean.Server
 
+import LeanInk.PremiseSelection.StatementFeatures
+
 namespace LeanInk.Analysis
 
 open Lean
@@ -106,13 +108,19 @@ namespace TraversalFragment
       return s!"{format}"
     | _ => pure none
 
-  def isConst : Expr -> MetaM Bool
+  def isConst : Expr -> MetaM (Option Name)
     | expr => 
         try 
           match expr with 
-          | Expr.const name _ => return ((← getEnv).find? name).isSome 
-          | _ => return false
-        catch _ => return false
+          | Expr.const name _ => 
+              -- NOTE(RFM): Simpler version of extractor as names are already 
+              -- split.
+              if ((← getEnv).find? name).isSome then 
+                return some name 
+              else 
+                return none
+          | _ => return none
+        catch _ => return none
 
   def genDocString? (self : TraversalFragment) : MetaM (Option String) := do
     let env ← getEnv
@@ -144,8 +152,8 @@ namespace TraversalFragment
       match self with
       | term termFragment => do
           let typeExpr := termFragment.info.expr 
-          if ← termFragment.ctx.runMetaM termFragment.info.lctx (isConst typeExpr) then 
-            return some { headPos := self.headPos, tailPos := self.tailPos, type := type, typeExpr := typeExpr, docString := docString }
+          if let some name ← termFragment.ctx.runMetaM termFragment.info.lctx (isConst typeExpr) then 
+            return some { headPos := self.headPos, tailPos := self.tailPos, type := type, constName := name, docString := docString }
           else 
             return none
       | _ => return none
@@ -162,7 +170,7 @@ namespace TraversalFragment
       return { 
         name := ""
         conclusion := toString goalType
-        conclusionExpr := goalExpr
+        features := ← PremiseSelection.getStatementFeatures goalExpr
         hypotheses := hypotheses 
       }
     | name => do
@@ -170,7 +178,7 @@ namespace TraversalFragment
       return { 
         name := toString goalFormatName
         conclusion := toString goalType
-        conclusionExpr := goalExpr
+        features := ← PremiseSelection.getStatementFeatures goalExpr
         hypotheses := hypotheses 
       }
 
@@ -197,7 +205,8 @@ namespace TraversalFragment
               | some type => do
                 let typeFmt ← ppExpr type
                 let names := ids.reverse.map (λ n => n.toString)
-                return list.append [{ names := names, body := "", typeExpr := type, type := s!"{typeFmt}" }]
+                let features ← PremiseSelection.getStatementFeatures type
+                return list.append [{ names := names, body := "", features := features, type := s!"{typeFmt}" }]
           let evalVar (varNames : List Name) (prevType? : Option Expr) (hypotheses : List Hypothesis) (localDecl : LocalDecl) : MetaM (List Name × Option Expr × (List Hypothesis)) := do
               match localDecl with
               | LocalDecl.cdecl _ _ varName type _ _ =>
@@ -215,7 +224,8 @@ namespace TraversalFragment
                 let val  ← instantiateMVars val
                 let typeFmt ← ppExpr type
                 let valFmt ← ppExpr val
-                pure ([], none, hypotheses.append [{ names := [varName.toString], body := s!"{valFmt}", typeExpr := type, type := s!"{typeFmt}" }])
+                let features ← PremiseSelection.getStatementFeatures type
+                pure ([], none, hypotheses.append [{ names := [varName.toString], body := s!"{valFmt}", features := features, type := s!"{typeFmt}" }])
           let (varNames, type?, hypotheses) ← lctx.foldlM (init := ([], none, [])) λ (varNames, prevType?, hypotheses) (localDecl : LocalDecl) =>
           if !ppAuxDecls && localDecl.isAuxDecl || !ppImplDetailHyps && localDecl.isImplementationDetail then
               pure (varNames, prevType?, hypotheses)
@@ -244,7 +254,7 @@ namespace TraversalFragment
       if infoTreeCtx.hasSorry || infoTreeCtx.isCalcTatic then do 
         return some { headPos := self.headPos, tailPos := self.tailPos, goalsBefore := [], goalsAfter := [] }
       if goalsAfter.isEmpty then  
-        return some { headPos := self.headPos, tailPos := self.tailPos, goalsBefore := goalsBefore, goalsAfter := [{ name := "", conclusion := "Goals accomplished! 🐙", conclusionExpr := default, hypotheses := [] }] }
+        return some { headPos := self.headPos, tailPos := self.tailPos, goalsBefore := goalsBefore, goalsAfter := [{ name := "", conclusion := "Goals accomplished! 🐙", features := default, hypotheses := [] }] }
       else
         return some { headPos := self.headPos, tailPos := self.tailPos, goalsBefore := goalsBefore, goalsAfter := goalsAfter }
     | _ => pure none

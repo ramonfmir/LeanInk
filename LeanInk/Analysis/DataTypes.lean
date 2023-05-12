@@ -5,6 +5,8 @@ import Lean.Data.Lsp
 import Lean.Syntax
 import Lean.Server
 
+import LeanInk.PremiseSelection.StatementFeatures
+
 namespace LeanInk.Analysis
 
 open Lean
@@ -67,7 +69,7 @@ instance : Positional SemanticTokenInfo where
 -/
 structure TypeTokenInfo extends Fragment where
   type: Option String
-  typeExpr : Option Expr
+  constName : Name
   docString: Option String
   deriving Inhabited
 
@@ -114,13 +116,13 @@ instance : Positional Token where
 structure Hypothesis where
   names : List String
   type : String
-  typeExpr : Expr
+  features : PremiseSelection.StatementFeatures
   body : String
 
 structure Goal where
   name : String
   conclusion : String
-  conclusionExpr : Expr
+  features : PremiseSelection.StatementFeatures
   hypotheses : List Hypothesis
 
 structure Tactic extends Fragment where

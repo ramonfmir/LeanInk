@@ -8,6 +8,8 @@ import Lean.Data.Json
 import Lean.Data.Json.FromToJson
 import Lean.Data.Lsp
 
+import LeanInk.PremiseSelection.StatementFeatures
+
 namespace LeanInk.Annotation.Alectryon
 
 open Lean
@@ -54,22 +56,22 @@ structure Hypothesis where
   names : List String
   body : String
   type : String
-  typeExpr : Expr
+  features : PremiseSelection.StatementFeatures
 
 instance : ToJson Hypothesis where
-  toJson h := toJson (toString h.typeExpr)
+  toJson h := if h.features.isEmpty then Json.null else toJson h.features
 
 structure Goal where
   _type : String := "goal"
   name : String
   conclusion : String
-  conclusionExpr : Expr
+  features : PremiseSelection.StatementFeatures
   hypotheses : Array Hypothesis
 
 instance : ToJson Goal where
-  toJson g := Json.mkObj [
-    ("state", toJson (toString g.conclusionExpr)),
-    ("hyps", toJson g.hypotheses)
+  toJson g := if g.features.isEmpty then Json.null else Json.mkObj [
+    ("state", toJson g.features),
+    ("hyps", Json.arr <| (g.hypotheses.map toJson).filter (· != Json.null))
   ]
 structure Message where
   _type : String := "message"  
@@ -83,10 +85,12 @@ structure Sentence where
   goals : Array Goal
 
 instance : ToJson Sentence where
-  toJson s := let c := toJson s.contents
-    if c == Json.null then Json.null else Json.mkObj [
+  toJson s := 
+    let c := toJson s.contents
+    let jsonGoals := (s.goals.map toJson).filter (· != Json.null)
+    if c == Json.null || jsonGoals.isEmpty then Json.null else Json.mkObj [
       ("contents", c),
-      ("goals", toJson s.goals)
+      ("goals", Json.arr jsonGoals)
     ]
 
 structure Text where
@@ -205,13 +209,13 @@ def genHypothesis (hypothesis : Analysis.Hypothesis) : Hypothesis := {
   names := hypothesis.names
   body := hypothesis.body
   type := hypothesis.type
-  typeExpr := hypothesis.typeExpr
+  features := hypothesis.features
 }
 
 def genGoal (goal : Analysis.Goal) : Goal := {
   name := goal.name
   conclusion := goal.conclusion
-  conclusionExpr := goal.conclusionExpr
+  features := goal.features
   hypotheses := (goal.hypotheses.map genHypothesis).toArray
 }
 
