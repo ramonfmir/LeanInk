@@ -106,6 +106,14 @@ namespace TraversalFragment
       return s!"{format}"
     | _ => pure none
 
+  def isConst : Expr -> MetaM Bool
+    | expr => 
+        try 
+          match expr with 
+          | Expr.const name _ => return ((← getEnv).find? name).isSome 
+          | _ => return false
+        catch _ => return false
+
   def genDocString? (self : TraversalFragment) : MetaM (Option String) := do
     let env ← getEnv
     match self with
@@ -133,7 +141,14 @@ namespace TraversalFragment
     if type == none ∧ docString == none then
       return none
     else
-      return some { headPos := self.headPos, tailPos := self.tailPos, type := type, docString := docString }
+      match self with
+      | term termFragment => do
+          let typeExpr := termFragment.info.expr 
+          if ← termFragment.ctx.runMetaM termFragment.info.lctx (isConst typeExpr) then 
+            return some { headPos := self.headPos, tailPos := self.tailPos, type := type, typeExpr := typeExpr, docString := docString }
+          else 
+            return none
+      | _ => return none
 
   def genTokens (self : TraversalFragment) : AnalysisM (List Token) := do
     let mut tokens : List Token := []
@@ -142,11 +157,12 @@ namespace TraversalFragment
     return tokens
 
   /- Sentence Generation -/
-  private def genGoal (goalType : Format) (hypotheses : List Hypothesis): Name -> MetaM (Goal)
+  private def genGoal (goalExpr : Expr) (goalType : Format) (hypotheses : List Hypothesis): Name -> MetaM (Goal)
     | Name.anonymous => do
       return { 
         name := ""
         conclusion := toString goalType
+        conclusionExpr := goalExpr
         hypotheses := hypotheses 
       }
     | name => do
@@ -154,6 +170,7 @@ namespace TraversalFragment
       return { 
         name := toString goalFormatName
         conclusion := toString goalType
+        conclusionExpr := goalExpr
         hypotheses := hypotheses 
       }
 
@@ -180,7 +197,7 @@ namespace TraversalFragment
               | some type => do
                 let typeFmt ← ppExpr type
                 let names := ids.reverse.map (λ n => n.toString)
-                return list.append [{ names := names, body := "", type := s!"{typeFmt}" }]
+                return list.append [{ names := names, body := "", typeExpr := type, type := s!"{typeFmt}" }]
           let evalVar (varNames : List Name) (prevType? : Option Expr) (hypotheses : List Hypothesis) (localDecl : LocalDecl) : MetaM (List Name × Option Expr × (List Hypothesis)) := do
               match localDecl with
               | LocalDecl.cdecl _ _ varName type _ _ =>
@@ -198,15 +215,16 @@ namespace TraversalFragment
                 let val  ← instantiateMVars val
                 let typeFmt ← ppExpr type
                 let valFmt ← ppExpr val
-                pure ([], none, hypotheses.append [{ names := [varName.toString], body := s!"{valFmt}", type := s!"{typeFmt}" }])
+                pure ([], none, hypotheses.append [{ names := [varName.toString], body := s!"{valFmt}", typeExpr := type, type := s!"{typeFmt}" }])
           let (varNames, type?, hypotheses) ← lctx.foldlM (init := ([], none, [])) λ (varNames, prevType?, hypotheses) (localDecl : LocalDecl) =>
           if !ppAuxDecls && localDecl.isAuxDecl || !ppImplDetailHyps && localDecl.isImplementationDetail then
               pure (varNames, prevType?, hypotheses)
             else
               evalVar varNames prevType? hypotheses localDecl
           let hypotheses ← pushPending hypotheses type? varNames 
-          let typeFmt ← ppExpr (← instantiateMVars decl.type)
-          return (← genGoal typeFmt hypotheses decl.userName)
+          let typeExpr ← instantiateMVars decl.type
+          let typeFmt ← ppExpr typeExpr
+          return (← genGoal typeExpr typeFmt hypotheses decl.userName)
 
   private def _genGoals (contextInfo : ContextBasedInfo TacticInfo) (goals: List MVarId) (metaCtx: MetavarContext) (infoTreeCtx : InfoTreeContext) : AnalysisM (List Goal) := 
     let ctx := { contextInfo.ctx with mctx := metaCtx }
@@ -226,7 +244,7 @@ namespace TraversalFragment
       if infoTreeCtx.hasSorry || infoTreeCtx.isCalcTatic then do 
         return some { headPos := self.headPos, tailPos := self.tailPos, goalsBefore := [], goalsAfter := [] }
       if goalsAfter.isEmpty then  
-        return some { headPos := self.headPos, tailPos := self.tailPos, goalsBefore := goalsBefore, goalsAfter := [{ name := "", conclusion := "Goals accomplished! 🐙", hypotheses := [] }] }
+        return some { headPos := self.headPos, tailPos := self.tailPos, goalsBefore := goalsBefore, goalsAfter := [{ name := "", conclusion := "Goals accomplished! 🐙", conclusionExpr := default, hypotheses := [] }] }
       else
         return some { headPos := self.headPos, tailPos := self.tailPos, goalsBefore := goalsBefore, goalsAfter := goalsAfter }
     | _ => pure none

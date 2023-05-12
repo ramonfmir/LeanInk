@@ -67,6 +67,7 @@ instance : Positional SemanticTokenInfo where
 -/
 structure TypeTokenInfo extends Fragment where
   type: Option String
+  typeExpr : Option Expr
   docString: Option String
   deriving Inhabited
 
@@ -113,11 +114,13 @@ instance : Positional Token where
 structure Hypothesis where
   names : List String
   type : String
+  typeExpr : Expr
   body : String
 
 structure Goal where
   name : String
   conclusion : String
+  conclusionExpr : Expr
   hypotheses : List Hypothesis
 
 structure Tactic extends Fragment where

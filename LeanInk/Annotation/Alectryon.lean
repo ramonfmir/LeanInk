@@ -26,7 +26,13 @@ structure Token where
   link : Option String := Option.none
   docstring : Option String := Option.none
   semanticType : Option String :=  Option.none
-  deriving ToJson
+
+instance : ToJson Token where
+  toJson token := 
+    if let some ti := token.typeinfo then
+      toJson ti.name 
+    else
+      Json.null
 
 /--
   Support type for experimental --experimental-type-tokens feature
@@ -39,22 +45,32 @@ inductive Contents where
 instance : ToJson Contents where
   toJson
     | Contents.string v => toJson v
-    | Contents.experimentalTokens v => toJson v
+    | Contents.experimentalTokens v => 
+        let c := (v.map toJson).filter (· != Json.null)
+        if c.isEmpty then Json.null else Json.arr c
 
 structure Hypothesis where
   _type : String := "hypothesis"
   names : List String
   body : String
   type : String
-  deriving ToJson
+  typeExpr : Expr
+
+instance : ToJson Hypothesis where
+  toJson h := toJson (toString h.typeExpr)
 
 structure Goal where
   _type : String := "goal"
   name : String
   conclusion : String
+  conclusionExpr : Expr
   hypotheses : Array Hypothesis
-  deriving ToJson
 
+instance : ToJson Goal where
+  toJson g := Json.mkObj [
+    ("state", toJson (toString g.conclusionExpr)),
+    ("hyps", toJson g.hypotheses)
+  ]
 structure Message where
   _type : String := "message"  
   contents : String
@@ -65,7 +81,13 @@ structure Sentence where
   contents : Contents
   messages : Array Message
   goals : Array Goal
-  deriving ToJson
+
+instance : ToJson Sentence where
+  toJson s := let c := toJson s.contents
+    if c == Json.null then Json.null else Json.mkObj [
+      ("contents", c),
+      ("goals", toJson s.goals)
+    ]
 
 structure Text where
   _type : String := "text"
@@ -99,7 +121,7 @@ inductive Fragment where
 
 instance : ToJson Fragment where
   toJson
-    | Fragment.text v => toJson v
+    | Fragment.text _ => Json.null
     | Fragment.sentence v => toJson v
 
 /- 
@@ -183,11 +205,13 @@ def genHypothesis (hypothesis : Analysis.Hypothesis) : Hypothesis := {
   names := hypothesis.names
   body := hypothesis.body
   type := hypothesis.type
+  typeExpr := hypothesis.typeExpr
 }
 
 def genGoal (goal : Analysis.Goal) : Goal := {
   name := goal.name
   conclusion := goal.conclusion
+  conclusionExpr := goal.conclusionExpr
   hypotheses := (goal.hypotheses.map genHypothesis).toArray
 }
 
@@ -220,8 +244,8 @@ def genFragment (annotation : Annotation) (globalTailPos : String.Pos) (contents
     let messages : List Analysis.Message := annotation.sentence.getFragments.filterMap (λ f => f.asMessage?)
     let mut goals : List Goal := []
     if let (some tactic) := Positional.smallest? tactics then
-      let useBefore : Bool := tactic.tailPos > globalTailPos
-      goals := genGoals useBefore tactic
+      --let useBefore : Bool := tactic.tailPos > globalTailPos
+      goals := genGoals true tactic
     let mut fragmentContents : Contents := Contents.string contents
     if config.experimentalTypeInfo ∨ config.experimentalDocString then
       let headPos := annotation.sentence.headPos
@@ -249,6 +273,11 @@ def annotateFileWithCompounds (l : List Alectryon.Fragment) (contents : String) 
 def genOutput (annotation : List Annotation) : AnalysisM UInt32 := do
   let config := (← read)
   let fragments ← annotateFileWithCompounds [] config.inputFileContents annotation
+  -- let mut a := #[]
+  -- for fragment in fragments do 
+  --   if let Fragment.sentence value := fragment then 
+  --     if let some tactic := value.asTactic? then 
+
   let rawContents ← generateOutput fragments.toArray
   createOutputFile (← IO.currentDir) config.inputFileName rawContents
   return 0
