@@ -8,11 +8,9 @@ do
     for mod in $mods 
     do 
         modInk="${mod}.leanInk"
-        if test -f "$modInk"; then
-            echo "$modInk exists."
-        else
+        if ! (test -f "$modInk";) then
             echo "$modInk does not exist."
-            ./build/bin/leanInk a $mod --lake ./lake-packages/mathlib/lakefile.lean --x-enable-type-info 
+            timeout 60s bash -c `./build/bin/leanInk a $mod --lake ./lake-packages/mathlib/lakefile.lean --x-enable-type-info` 
         fi
     done
 done
