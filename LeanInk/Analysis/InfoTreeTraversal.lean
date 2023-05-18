@@ -108,15 +108,18 @@ namespace TraversalFragment
       return s!"{format}"
     | _ => pure none
 
-  def isConst : Expr -> MetaM (Option Name)
+  def isPremise : Expr -> MetaM (Option Name)
     | expr => 
         try 
           match expr with 
           | Expr.const name _ => 
               -- NOTE(RFM): Simpler version of extractor as names are already 
               -- split.
-              if ((← getEnv).find? name).isSome then 
-                return some name 
+              if let some cinfo := (← getEnv).find? name then 
+                if (← inferType cinfo.type).isProp then
+                  return some name 
+                else 
+                  return none
               else 
                 return none
           | _ => return none
@@ -152,7 +155,7 @@ namespace TraversalFragment
       match self with
       | term termFragment => do
           let typeExpr := termFragment.info.expr 
-          if let some name ← termFragment.ctx.runMetaM termFragment.info.lctx (isConst typeExpr) then 
+          if let some name ← termFragment.ctx.runMetaM termFragment.info.lctx (isPremise typeExpr) then 
             return some { headPos := self.headPos, tailPos := self.tailPos, type := type, constName := name, docString := docString }
           else 
             return none
