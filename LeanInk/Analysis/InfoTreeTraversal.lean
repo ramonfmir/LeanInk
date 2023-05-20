@@ -115,8 +115,8 @@ namespace TraversalFragment
           | Expr.const name _ => 
               -- NOTE(RFM): Simpler version of extractor as names are already 
               -- split.
-              if let some cinfo := (← getEnv).find? name then 
-                if (← inferType cinfo.type).isProp then
+              if let some cinfo := (← getEnv).find? name then
+                if cinfo.hasValue && (← inferType cinfo.type).isProp then
                   return some name 
                 else 
                   return none

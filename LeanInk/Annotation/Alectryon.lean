@@ -135,12 +135,8 @@ instance : ToJson Fragment where
 def genTypeInfo? (getContents : String.Pos -> String.Pos -> Option String) (token : Analysis.TypeTokenInfo) : AnalysisM (Option TypeInfo) := do
   match token.type with
   | some type => do
-    let headPos := Positional.headPos token
-    let tailPos := Positional.tailPos token
-    match getContents headPos tailPos with 
-    | none => pure none
-    | "" => pure none
-    | some x => return some { name := x, type := type }
+    -- NOTE(RFM): Ignoring getContents and just using the analysis type info.
+    return some { name := toString token.constName, type := type }
   | none => pure none
 
 def genSemanticTokenValue : Option SemanticTokenInfo -> AnalysisM (Option String)
